@@ -1,0 +1,275 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# CMSC320 Final Project: Greatest NBA Players of All Time
+Jason Varghese
+
+### Introduction
+Hello, and welcome to my CMSC320 final project, which is an easy to understand tutorial on the data science pipeline.  I will attain raw data representing NBA player statistics from 1950-2017, and utilize it in order to carry out the following steps of the data science pipeline:
+
+1) Data Curation, Parsing, and Management
+2) Exploratory Data Analysis
+3) Hypothesis Testing
+4) Machine Learning
+
+Throughout this process, I will analyze various key statistics, determining which players throughout history excelled at them, and ultimately produce a rough list of the greatest players of all time in each role.
+
+It should be noted that as time progresses, the average skill level of players within the league undoubtedly increases.  This is because, among many other factors, the sport gradually accumulates popularity, causing more and more people to devote their time to it as the years pass, inevitably resulting in more highly skilled players reaching the professional level.  This means that, while players throughout different points in history may have managed to record similarly high statistical feats, those who did so longer ago did it against, on average, considerably worse opponents.  This makes it difficult to argue that superstars from many decades ago could compete with modern superstars.  Keeping this observation in mind, we will define the greatness of an NBA  player as his level of dominance within his respective era, and proceed without any further reservations.
+
+### Data Curation, Parsing, and Management
+First off, I must import all of the libraries that I will be utilizing in this tutorial.
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(broom)
+library(dplyr)
+library(tidyverse)
+```
+
+Next, I will download the data that I would like to analyze.  The dataset that I will be working with can be found at the following source:
+
+https://www.kaggle.com/drgilermo/nba-players-stats
+
+It comes in the form of a csv file, which I must convert into a data frame.
+
+```{r load_dataframe, message=FALSE, warning=FALSE}
+filePath <- "/home/curryfury/Documents/CMSC320/FinalProject/Seasons_Stats.csv"
+
+nba_stats <- read_csv(filePath) %>%
+  select(2:53)
+
+nba_stats %>% slice(1:20)
+```
+
+Certain columns were interpreted with incorrect datatypes, so these need to be manually fixed.
+
+```{r fix_datatypes, message=FALSE, warning=FALSE}
+nba_stats$"GS" = as.numeric(nba_stats$"GS")
+nba_stats$"3PAr" = as.numeric(nba_stats$"3PAr")
+nba_stats$"ORB%" = as.numeric(nba_stats$"ORB%")
+nba_stats$"DRB%" = as.numeric(nba_stats$"DRB%")
+nba_stats$"TRB%" = as.numeric(nba_stats$"TRB%")
+nba_stats$"AST%" = as.numeric(nba_stats$"AST%")
+nba_stats$"STL%" = as.numeric(nba_stats$"STL%")
+nba_stats$"BLK%" = as.numeric(nba_stats$"BLK%")
+nba_stats$"TOV%" = as.numeric(nba_stats$"TOV%")
+nba_stats$"USG%" = as.numeric(nba_stats$"USG%")
+nba_stats$"OBPM%" = as.numeric(nba_stats$"OBPM")
+nba_stats$"DBPM%" = as.numeric(nba_stats$"DBPM")
+nba_stats$"BPM%" = as.numeric(nba_stats$"BPM")
+nba_stats$"VORP%" = as.numeric(nba_stats$"VORP")
+nba_stats$"3P" = as.numeric(nba_stats$"3P")
+nba_stats$"3PA" = as.numeric(nba_stats$"3PA")
+nba_stats$"3P%" = as.numeric(nba_stats$"3P%")
+nba_stats$"ORB" = as.numeric(nba_stats$"ORB")
+nba_stats$"DRB" = as.numeric(nba_stats$"DRB")
+nba_stats$"STL" = as.numeric(nba_stats$"STL")
+nba_stats$"BLK" = as.numeric(nba_stats$"BLK")
+nba_stats$"TOV" = as.numeric(nba_stats$"TOV")
+```
+
+Two observations about this data immediately stand out.  First, many of the attributes are riddled with null values.  This is because the extensive quantity of data that is collected today was not collected during the infancy of the NBA, so this data simply does not exist for the first few years covered by the dataset.  This is something that I must work around.  Second, certain players have multiple rows dedicated to them in the dataset.  This is because they were traded to different teams during the year, and the individual rows represent their performances for each of those teams.  While I could potentially combine the statistics of players for each year, I instead observe that the highest end players in the league (the ones that I care about for the purposes of this analysis) are practically guaranteed to be considered invaluable assets by their teams, meaning that they will not be traded during the season.  This feature of the dataset can thereby be safely ignored.
+
+Thus, for my purposes, this data frame can be considered to be tidy, and I may proceed to the next stage of my analysis.
+
+### Exploratory Data Analysis
+In this stage, I would like to determine which players throughout history lead each of the major offensive and defensive categories.
+
+I will begin with the most obvious offensive category: points scored.  In order to fairly compare current players with those who played in the past (and likely played many more seasons), I will gather points statistics for individual seasons rather than cumulative career statistics.
+
+```{r points_df, message=FALSE, warning=FALSE}
+points_stats <- nba_stats %>%
+  select(Year, Player, Pos, PTS) %>%
+  rename("Position" = Pos, "Points" = PTS) %>%
+  arrange(desc(Points))
+points_stats %>% slice(1:20)
+```
+
+Incredibly, all six of the highest scoring seasons in NBA history were produced by just two players.  Wilt Chamberlain and Michael Jordan were both unstoppable offensively in their respective eras, so this result is sensible.  It is interesting that only two players in the entire top twenty scorers list played after the year 2000, which may suggest a shift in the playstyle of NBA teams from largely individual to team-oriented.
+
+This data can be better visualized with the following scatterplot comparing year to points scored by each player.
+
+```{r points_plot, message=FALSE, warning=FALSE}
+points_stats %>%
+  filter(Points > 2000) %>%
+  ggplot(aes(x = Year , y = Points)) +
+  geom_point(mapping = aes(color=Position)) +
+  labs(title = "Points Scored by Year",
+       x = "Year",
+       y = "Points")
+```
+
+Now, I would like to shift from general points scored to three pointers scored, as the most successful teams in the modern NBA seem to successfully score three pointers in high volumes.
+
+```{r three_pointers_df, message=FALSE, warning=FALSE}
+three_pointers_stats <- nba_stats %>%
+  filter(Year >= 1980) %>%
+  select(Year, Player, "3P", "3P%") %>%
+  rename("Three_Pointers" = "3P", "Three_Point_Percentage" = "3P%") %>%
+  arrange(desc(Three_Pointers), desc(Three_Point_Percentage))
+three_pointers_stats %>% slice(1:20)
+```
+
+Again, incredibly, four of the top five spots in the list are held by a single player, the current point guard of the Golden State Warriors, Stephen Curry, while the other is held by his teammate, Klay Thompson.  The Golden State Warriors have by far been the most dominant team in the NBA in recent years.  They may very well be the greatest team in NBA history, and a large part of their success likely stems from their supreme three point shooting.  It is also valuable to observe that the vast majority of these records were set recently.  The three point line was introduced to the NBA in 1980, and teams are now figuring out how to use it in the most effective way possible.
+
+This data can be better visualized with the following scatterplot comparing year to three pointers scored by each player.
+
+```{r three_pointers_plot, message=FALSE, warning=FALSE}
+three_pointers_stats %>%
+  slice(1:500) %>%
+  ggplot(aes(x = Year , y = Three_Pointers)) +
+  geom_point(mapping = aes(color=Three_Point_Percentage)) +
+  labs(title = "Three Pointers Scored by Year",
+       x = "Year",
+       y = "Three Pointers")
+```
+
+While scoring in high quantities is certainly impressive, this may simply be a result of taking many more shots than typical players.  The greatest players of all time should be efficient, and one of the best statistical indicators of efficiency is true shooting percentage.  This is based on the number of points scored with respect to the number of shots taken (giving more weight to made three pointers and less weight to free throws), and could theoretically exceed 100% if a player were to be super efficient for an entire season.
+
+```{r ts_df, message=FALSE, warning=FALSE}
+ts_stats <- nba_stats %>%
+  filter(PTS > 1000) %>%
+  select(Year, Player, Pos, "TS%") %>%
+  rename("Position" = Pos, "True_Shooting_Percentage" = "TS%") %>%
+  arrange(desc(True_Shooting_Percentage))
+ts_stats %>% slice(1:20)
+```
+
+The vast majority of these players are big men who are able to dunk for most of their shot attempts, practically guaranteeing a high true shooting percentage.  However, a few guards, particularly Stephen Curry and John Stockton, have managed to sneak onto this list as well, which is extremely impressive in its own right.
+
+Now that I have determined some of the greatest offensive players of all time, I will do the same for defense by analyzing various key defensive statistics.
+
+```{r rebounds_df, message=FALSE, warning=FALSE}
+rebounds_stats <- nba_stats %>%
+  select(Year, Player, Pos, TRB) %>%
+  rename("Position" = Pos, "Rebounds" = TRB) %>%
+  arrange(desc(Rebounds))
+rebounds_stats %>% slice(1:20)
+```
+
+```{r rebounds_plot, message=FALSE, warning=FALSE}
+rebounds_stats %>%
+  filter(Rebounds > 1000) %>%
+  ggplot(aes(x = Year , y = Rebounds)) +
+  geom_point(mapping = aes(color=Position)) +
+  labs(title = "Rebounds by Year",
+       x = "Year",
+       y = "Rebounds")
+```
+
+```{r blocks_df, message=FALSE, warning=FALSE}
+blocks_stats <- nba_stats %>%
+  select(Year, Player, Pos, BLK) %>%
+  rename("Position" = Pos, "Blocks" = BLK) %>%
+  arrange(desc(Blocks))
+blocks_stats %>% slice(1:20)
+```
+
+```{r blocks_plot, message=FALSE, warning=FALSE}
+blocks_stats %>%
+  filter(Blocks > 200) %>%
+  ggplot(aes(x = Year , y = Blocks)) +
+  geom_point(mapping = aes(color=Position)) +
+  labs(title = "Blocks by Year",
+       x = "Year",
+       y = "Blocks")
+```
+
+```{r steals_df, message=FALSE, warning=FALSE}
+steals_stats <- nba_stats %>%
+  select(Year, Player, Pos, STL) %>%
+  rename("Position" = Pos, "Steals" = STL) %>%
+  arrange(desc(Steals))
+steals_stats %>% slice(1:20)
+```
+
+```{r steals_plot, message=FALSE, warning=FALSE}
+steals_stats %>%
+  filter(Steals > 150) %>%
+  ggplot(aes(x = Year , y = Steals)) +
+  geom_point(mapping = aes(color=Position)) +
+  labs(title = "Steals by Year",
+       x = "Year",
+       y = "Steals")
+```
+
+Based on this analysis, some notable defensive names include Wilt Chamberlain, Bill Russell, Mark Eaton, and Michael Jordan.  By being dominant on both the offensive and defensive ends of the court, Wilt Chamberlain and Michael Jordan have practically sealed themselves in as two of the greatest NBA players of all time.
+
+### Hypothesis Testing
+Now, I would like to test one of the suspicions that I developed while analyzing the NBA player data.  Is it true that as time has passed, the style of play that NBA teams tend to follow has changed, with the average number of three point shots taken by teams increasing?  I will determine this by comparing the average number of three point shot attempts by teams in the NBA in 1997 with the same statistic in 2017.
+
+In order to conduct this test, I must first reorganize the data so that I can easily attain my desired values.
+
+```{r three_point_attempts_df, message=FALSE, warning=FALSE}
+three_point_attempts_stats <- nba_stats %>%
+  filter(Year >= 1980) %>%
+  select(Year, Tm, "3PA") %>%
+  rename("Team" = Tm, "Three_Point_Attempts" = "3PA") %>%
+  group_by(Year, Team) %>%
+  summarise(Three_Point_Attempts = sum(Three_Point_Attempts)) %>%
+  group_by(Year) %>%
+  summarise(Mean_3PA = mean(Three_Point_Attempts), SD_3PA = sd(Three_Point_Attempts))
+three_point_attempts_stats %>% slice(1:20)
+```
+
+The desired values are:
+1997 - Mean_3PA = 1467.03, SD_3PA = 553.39
+2017 - Mean_3PA = 2359.23, SD_3PA = 873.34
+
+Next, I will conduct a hypothesis on the difference between the two population means.
+
+$H_0: 3PA_{2017}-3PA_{1997}=0$  
+$H_A: 3PA_{2017}-3PA_{1997}>0$
+
+```{r hypothesis_test, message=FALSE, warning=FALSE}
+p_value <- 1 - pnorm(2359.23-1467.03, mean = 0, sd = sqrt((873.34^2+553.39^2)/30))
+print(p_value)
+```
+
+As the p_value < .01, we reject $H_0$ and conclude that the number of three point shots attempted by teams increased from 1997 to 2017.  This change in playstyle is logical, as teams are able to score more points from the same number of posessions by successfully making three point shots, assuming that players are able to do so reliably.  Today, Stephen Curry is hailed as being the greatest shooter in history, frequently draining well over 90% of his attempts in practice, a skill that requires defenders to guard him very closely.  It is safe to say that he is another of the greatest NBA players of all time.
+
+### Machine Learning
+I would like to see if the increase in average number of three point shots attempted by teams in each year of the NBA follows a roughly linear trend.
+
+```{r three_point_attempts_plot, message=FALSE, warning=FALSE}
+three_point_attempts_stats %>%
+  ggplot(aes(x = Year , y = Mean_3PA)) +
+  geom_point() +
+  geom_smooth(method = lm) +
+  labs(title = "Mean Three Point Attempts by Year",
+       x = "Year",
+       y = "Mean Three Point Attempts")
+```
+
+The graph can be described by the following regression model.
+
+```{r three_point_attempts_regression}
+three_point_attempts_fit <- lm(Mean_3PA~Year, data=three_point_attempts_stats)
+three_point_attempts_fit %>%
+  tidy()
+```
+
+As the p-value is extremely low, I can conclude that the average number of three-point-attempts made by NBA teams in a season does, in fact, grow linearly with respect to year.  The following residual plot further confirms this, as no pattern exists between the residuals.
+
+```{r three_point_attempts_residuals}
+augmented_three_point_attempts <- three_point_attempts_fit %>%
+  augment()
+
+augmented_three_point_attempts %>%
+  ggplot(aes(x = Year, y = .resid)) +
+    geom_point() +
+    labs(title = "Residuals for Linear Regression Model of Year vs. Mean Three Point Attempts",
+         x = "Year",
+         y = "Mean Three Point Attempts")
+```
+
+### Closing
+With that, I have completed my basic tutorial of the data science pipeline.  I hope that you have learned about data curation, parsing, and management, exploratory data analysis, hypothesis testing, and machine learning.  I highly recommend that you use what you have learned to conduct your own data analysis, whether it be based around the NBA, or some other topic that catches your interest.  Best wishes!
+
+### References
+Data Curation, Parsing, and Management: https://conferences.oreilly.com/strata/stratany2014/public/schedule/detail/36021  
+Exploratory Data Analysis: https://www.itl.nist.gov/div898/handbook/eda/eda_d.htm  
+Hypothesis Testing: http://www.statisticshowto.com/probability-and-statistics/hypothesis-testing/  
+Machine Learning: https://www.mathworks.com/discovery/machine-learning.html
